@@ -5,7 +5,8 @@ class Protocol:
     commands:
     client -> server: 
     REG: register, two parameters: username and password
-    LOG: login, two parameters: username and password
+    LOGIN: login, two parameters: username and password
+    LOGOUT: logout, zero parameters
     GETRANGE: get range of numbers to check, zero parameters
     FINISHEDRANGE: the client has finished the range of numbers to check, zero parameters
     FOUND: the client has found a number, one parameter: the number
@@ -19,10 +20,6 @@ class Protocol:
     LENGTH_FIELD_SIZE = 8
     # קבוע במחלקה פרוטוקול שמגדיר ששדה האורך של הודעות הוא באורך 8
     
-    @staticmethod
-    def is_valid_msg(msg: str) -> bool:
-        """
-        """
     
     @staticmethod
     def send_msg(data: str, socket) -> None:
@@ -37,7 +34,7 @@ class Protocol:
         socket.send(msg.encode(encoding="latin-1"))
 
     @staticmethod
-    def get_msg(my_socket) -> tuple[bool, str]:
+    def get_msg(my_socket) -> str:
         """
         Extract message from protocol, without the length field
         If length field does not include a number, returns False, "Error"
@@ -47,22 +44,80 @@ class Protocol:
         try:
             msg_length = int(msg_length)
         except ValueError:
-            return False, "Error"
+            return "Error"
         
         msg = my_socket.recv(msg_length)
         msg=msg.decode(encoding="latin-1")
 
-        return True, msg
+        return msg
     
 class client_protocol(Protocol):
     
-    def __init__(self, socket) -> None:
-        self.socket = socket
+    def __init__(self, cl_socket) -> None:
+        self.cl_socket = cl_socket
         
+    # sends register message to server and returns the answer from the server
     def register(self, username, password):
-        self.socket.send(f"REG|{username}|{password}".encode(encoding="latin-1"))
-        
+        self.cl_socket.send(f"REG|{username}|{password}".encode(encoding="latin-1"))
+        return self.get_msg(self.cl_socket)
     
+    # sends logout message to the server
+    def logout(self):
+        self.cl_socket.send("LOGOUT".encode(encoding="latin-1"))
+        
+    # sends login message to server and returns the answer from the server
     def login(self, username, password):
-        self.socket.send(f"LOG|{username}|{password}".encode(encoding="latin-1"))
+        self.cl_socket.send(f"LOG|{username}|{password}".encode(encoding="latin-1"))
+        return self.get_msg(self.cl_socket)
+    
+    def get_range(self) -> tuple[int, int] | bool:
+        self.cl_socket.send("GETRANGE".encode(encoding="latin-1"))
+        msg = self.get_msg(self.cl_socket)
+        if msg == "Error":
+            return False
+        return tuple(map(int, msg.split("|")[1:]))
+
+    def finished_range(self) -> None:
+        self.cl_socket.send("FINISHEDRANGE".encode(encoding="latin-1"))
+        
+    def found(self, number: int) -> None:
+        self.cl_socket.send(f"FOUND|{number}".encode(encoding="latin-1"))
+
+class server_protocol(Protocol):
+    
+    def __init__(self, cl_socket) -> None:
+        self.cl_socket = cl_socket
+        
+    def is_valid(self, msg: str) -> bool:
+        msg_split = msg.split("|")
+        if msg_split[0] not in ["REG", "LOGIN", "GETRANGE", "FINISHEDRANGE", "FOUND"]:
+            return False
+        command = msg_split[0]
+        match command:
+            case "REG":
+                if len(msg_split) != 3:
+                    return False
+            case "LOGIN":
+                if len(msg_split) != 3:
+                    return False
+            case "LOGOUT":
+                if len(msg_split) != 1:
+                    return False
+            case "GETRANGE":
+                if len(msg_split) != 1:
+                    return False
+            case "FINISHEDRANGE":
+                if len(msg_split) != 1:
+                    return False
+            case "FOUND":
+                if len(msg_split) != 2:
+                    return False 
+        return True
+        
+    def get_request(self) -> list[str]:
+        msg = self.get_msg(self.cl_socket)
+        while not self.is_valid(msg):
+            msg = self.get_msg(self.cl_socket)
+        return msg.split("|")
+        
     
