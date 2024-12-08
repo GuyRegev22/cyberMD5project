@@ -60,10 +60,8 @@ class client_protocol(Protocol):
     Client-side implementation of the Protocol, with methods for sending specific commands.
     """
 
-    def __init__(self, cl_socket) -> None:
-        self.cl_socket = cl_socket
-
-    def register(self, username, password):
+    @staticmethod
+    def register(username, password, cl_socket) -> str:
         """
         Sends a registration request to the server.
         
@@ -74,16 +72,18 @@ class client_protocol(Protocol):
         Returns:
         - str: The server's response.
         """
-        self.cl_socket.send(f"REG|{username}|{password}".encode(encoding="latin-1"))
-        return self.get_msg(self.cl_socket)
+        cl_socket.send(f"REG|{username}|{password}".encode(encoding="latin-1"))
+        return Protocol.get_msg(cl_socket)
 
-    def logout(self):
+    @staticmethod
+    def logout(cl_socket) -> None:
         """
         Sends a logout request to the server.
         """
-        self.cl_socket.send("LOGOUT".encode(encoding="latin-1"))
+        cl_socket.send("LOGOUT".encode(encoding="latin-1"))
 
-    def login(self, username, password) -> bool:
+    @staticmethod
+    def login(username, password, cl_socket) -> bool:
         """
         Sends a login request to the server.
         
@@ -94,13 +94,14 @@ class client_protocol(Protocol):
         Returns:
         - bool: True if login is successful, False otherwise.
         """
-        self.cl_socket.send(f"LOG|{username}|{password}".encode(encoding="latin-1"))
-        msg = self.get_msg(self.cl_socket)
+        cl_socket.send(f"LOG|{username}|{password}".encode(encoding="latin-1"))
+        msg = client_protocol.get_msg(cl_socket)
         if msg == "Error":
             return False
         return msg == "Logged in successfully"
 
-    def get_range(self) -> tuple[int, int, str] | bool:
+    @staticmethod
+    def get_range(cl_socket) -> tuple[int, int, str] | bool:
         """
         Requests a range of numbers to check from the server.
         
@@ -108,36 +109,39 @@ class client_protocol(Protocol):
         - tuple[int, int]: The start and end of the range if successful.
         - False if there is an error.
         """
-        self.cl_socket.send("GETRANGE".encode(encoding="latin-1"))
-        msg = self.get_msg(self.cl_socket)
+        cl_socket.send("GETRANGE".encode(encoding="latin-1"))
+        msg = client_protocol.get_msg(cl_socket)
         if msg == "Error":
             return False
         return (int(msg.split("|")[1]), int(msg.split("|")[2]), msg.split("|")[3])
 
-    def finished_range(self) -> None:
+    @staticmethod
+    def finished_range(cl_socket) -> None:
         """
         Notifies the server that the client has finished processing a range.
         """
-        self.cl_socket.send("FINISHEDRANGE".encode(encoding="latin-1"))
+        cl_socket.send("FINISHEDRANGE".encode(encoding="latin-1"))
 
-    def send_found(self, number: int) -> None:
+    @staticmethod
+    def send_found(number: int, cl_socket) -> None:
         """
         Notifies the server that the client has found a valid number.
         
         Args:
         - number (int): The found number.
         """
-        self.cl_socket.send(f"FOUND|{number}".encode(encoding="latin-1"))
+        cl_socket.send(f"FOUND|{number}".encode(encoding="latin-1"))
 
-    def check_if_found(self) -> bool:
+    @staticmethod
+    def check_if_found(cl_socket) -> bool:
         """
         Checks with the server if a number has been found.
         
         Returns:
         - bool: True if the number was found, False otherwise.
         """
-        self.cl_socket.send("CHECK".encode(encoding="latin-1"))
-        msg = self.get_msg(self.cl_socket)
+        cl_socket.send("CHECK".encode(encoding="latin-1"))
+        msg = client_protocol.get_msg(cl_socket)
         return msg == "FOUND"
 
 
@@ -146,10 +150,8 @@ class server_protocol(Protocol):
     Server-side implementation of the Protocol, with methods for handling client requests.
     """
 
-    def __init__(self, cl_socket) -> None:
-        self.cl_socket = cl_socket
-
-    def is_valid(self, msg: str) -> bool:
+    @staticmethod
+    def is_valid(msg: str) -> bool:
         """
         Validates the format of an incoming message.
         
@@ -174,25 +176,28 @@ class server_protocol(Protocol):
                 return len(msg_split) == 2
         return True
 
-    def get_request(self) -> list[str]:
+    @staticmethod
+    def get_request(cl_socket) -> list[str]:
         """
         Receives and validates a client request.
         
         Returns:
         - list[str]: The parsed request as a list of strings.
         """
-        msg = self.get_msg(self.cl_socket)
-        while not self.is_valid(msg):
-            msg = self.get_msg(self.cl_socket)
+        msg = server_protocol.get_msg(cl_socket)
+        while not server_protocol.is_valid(msg):
+            msg = server_protocol.get_msg(cl_socket)
         return msg.split("|")
 
-    def send_error(self) -> None:
+    @staticmethod
+    def send_error(cl_socket) -> None:
         """
         Sends an error message to the client.
         """
-        self.cl_socket.send("Error".encode(encoding="latin-1"))
+        cl_socket.send("Error".encode(encoding="latin-1"))
 
-    def send_range(self, start: int, end: int, target: str) -> None:
+    @staticmethod
+    def send_range(start: int, end: int, target: str, cl_socket) -> None:
         """
         Sends a range of numbers to the client.
         
@@ -201,9 +206,10 @@ class server_protocol(Protocol):
         - end (int): The end of the range.
         - target (str): The hash of the target number.
         """
-        self.cl_socket.send(f"RANGE|{start}|{end}|{target}".encode(encoding="latin-1"))
+        cl_socket.send(f"RANGE|{start}|{end}|{target}".encode(encoding="latin-1"))
 
-    def send_login_success(self, success: bool) -> None:
+    @staticmethod
+    def send_login_success(success: bool, cl_socket) -> None:
         """
         Sends a login success or failure message to the client.
         
@@ -211,11 +217,12 @@ class server_protocol(Protocol):
         - success (bool): True if login is successful, False otherwise.
         """
         if success:
-            self.cl_socket.send("Logged in successfully".encode(encoding="latin-1"))
+            cl_socket.send("Logged in successfully".encode(encoding="latin-1"))
         else:
-            self.send_error()
+            server_protocol.send_error()
 
-    def send_register_success(self, success: bool) -> None:
+    @staticmethod
+    def send_register_success(success: bool, cl_socket) -> None:
         """
         Sends a registration success or failure message to the client.
         
@@ -223,11 +230,12 @@ class server_protocol(Protocol):
         - success (bool): True if registration is successful, False otherwise.
         """
         if success:
-            self.cl_socket.send("Registered successfully".encode(encoding="latin-1"))
+            cl_socket.send("Registered successfully".encode(encoding="latin-1"))
         else:
-            self.send_error()
+            server_protocol.send_error()
 
-    def return_check(self, is_found: bool) -> None:
+    @staticmethod
+    def return_check(is_found: bool, cl_socket) -> None:
         """
         Sends the result of a "check if found" operation to the client.
         
@@ -235,6 +243,6 @@ class server_protocol(Protocol):
         - is_found (bool): True if a number was found, False otherwise.
         """
         if is_found:
-            self.cl_socket.send("FOUND".encode(encoding="latin-1"))
+            cl_socket.send("FOUND".encode(encoding="latin-1"))
         else:
-            self.cl_socket.send("NOT FOUND".encode(encoding="latin-1"))
+            cl_socket.send("NOT FOUND".encode(encoding="latin-1"))
