@@ -186,6 +186,7 @@ class server_protocol(Protocol):
         """
         msg = server_protocol.get_msg(cl_socket)
         while not server_protocol.is_valid(msg):
+            server_protocol.send_error()
             msg = server_protocol.get_msg(cl_socket)
         return msg.split("|")
 
