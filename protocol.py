@@ -61,7 +61,7 @@ class client_protocol(Protocol):
     """
 
     @staticmethod
-    def register(username, password, cl_socket) -> str:
+    def register(username, password, phone_number, cl_socket) -> str:
         """
         Sends a registration request to the server.
         
@@ -72,7 +72,7 @@ class client_protocol(Protocol):
         Returns:
         - str: The server's response.
         """
-        cl_socket.send(f"REG|{username}|{password}".encode(encoding="latin-1"))
+        cl_socket.send(f"REG|{username}|{password}|{phone_number}".encode(encoding="latin-1"))
         return Protocol.get_msg(cl_socket)
 
     @staticmethod
@@ -167,7 +167,7 @@ class server_protocol(Protocol):
         command = msg_split[0]
         match command:
             case "REG":
-                return len(msg_split) == 3
+                return len(msg_split) == 4
             case "LOGIN":
                 return len(msg_split) == 3
             case "LOGOUT" | "GETRANGE" | "FINISHEDRANGE" | "CHECK":
