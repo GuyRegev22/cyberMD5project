@@ -11,10 +11,10 @@ class client:
     Represents a client that communicates with a server to register, log in, 
     perform hash calculations, and execute other protocol-defined commands.
     """
-    server_ip = "127.0.0.1"  # Server IP address
+    server_ip = "192.168.0.238"  # Server IP address
     server_port = 5555       # Server port
     connected = False        # Connection state
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Client socket
+    client_socket = socket.socket()  # Client socket
 
     def is_valid_username(self, username) -> bool:
         """
@@ -169,17 +169,22 @@ class client:
                 stop_event.set()
             time.sleep(2)
 
-    def main(self, stop_event):
+    def main(self):
         """
         Main client logic for interacting with the server and performing tasks.
 
         :param stop_event: A threading event to signal stopping the loop.
         """
+
+
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
         except socket.error as e:
             print(f"Failed to connect to the server: {e}")
             return
+        stop_event = threading.Event()
+        background_thread = threading.Thread(target=client_inst.background_listener, args=(stop_event,), daemon=True)
+        background_thread.start()
         
         try:
             while not stop_event.is_set():
@@ -208,11 +213,8 @@ class client:
         finally:
             self.client_socket.close()
 
-    if __name__ == "__main__":
-        stop_event = threading.Event()
-        background_thread = threading.Thread(target=background_listener, args=(stop_event,), daemon=True)
-        background_thread.start()
+if __name__ == "__main__":
+    client_inst = client() 
+    client_inst.main() # Create the client instance
+      # Event to manage thread stopping
 
-        main(stop_event)
-
-        background_thread.join()
