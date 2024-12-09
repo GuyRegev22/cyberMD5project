@@ -61,7 +61,7 @@ class client_protocol(Protocol):
     """
 
     @staticmethod
-    def register(username, password, phone_number, cl_socket) -> str:
+    def register(cl_socket, username, password, phone_number) -> str:
         """
         Sends a registration request to the server.
         
@@ -83,7 +83,7 @@ class client_protocol(Protocol):
         cl_socket.send("LOGOUT".encode(encoding="latin-1"))
 
     @staticmethod
-    def login(username, password, cl_socket) -> bool:
+    def login(cl_socket, username, password) -> bool:
         """
         Sends a login request to the server.
         
@@ -96,7 +96,7 @@ class client_protocol(Protocol):
         """
         cl_socket.send(f"LOG|{username}|{password}".encode(encoding="latin-1"))
         msg = client_protocol.get_msg(cl_socket)
-        if msg == "Error":
+        if msg.startswith("Error"):
             return False
         return msg == "Logged in successfully"
 
@@ -111,7 +111,7 @@ class client_protocol(Protocol):
         """
         cl_socket.send("GETRANGE".encode(encoding="latin-1"))
         msg = client_protocol.get_msg(cl_socket)
-        if msg == "Error":
+        if msg.startswith("Error"):
             return False
         return (int(msg.split("|")[1]), int(msg.split("|")[2]), msg.split("|")[3])
 
@@ -123,7 +123,7 @@ class client_protocol(Protocol):
         cl_socket.send("FINISHEDRANGE".encode(encoding="latin-1"))
 
     @staticmethod
-    def send_found(number: int, cl_socket) -> None:
+    def send_found(cl_socket, number: int) -> None:
         """
         Notifies the server that the client has found a valid number.
         
@@ -191,14 +191,17 @@ class server_protocol(Protocol):
         return msg.split("|")
 
     @staticmethod
-    def send_error(cl_socket) -> None:
+    def send_error(cl_socket, error_msg: str=None) -> None:
         """
         Sends an error message to the client.
         """
-        cl_socket.send("Error".encode(encoding="latin-1"))
+        if error_msg is None:
+            cl_socket.send("Error".encode(encoding="latin-1"))
+        else:
+            cl_socket.send(f"Error|{error_msg}".encode(encoding="latin-1"))
 
     @staticmethod
-    def send_range(start: int, end: int, target: str, cl_socket) -> None:
+    def send_range(cl_socket, start: int, end: int, target: str) -> None:
         """
         Sends a range of numbers to the client.
         
@@ -210,7 +213,7 @@ class server_protocol(Protocol):
         cl_socket.send(f"RANGE|{start}|{end}|{target}".encode(encoding="latin-1"))
 
     @staticmethod
-    def send_login_success(success: bool, cl_socket) -> None:
+    def send_login_success(cl_socket, success: bool) -> None:
         """
         Sends a login success or failure message to the client.
         
@@ -223,7 +226,7 @@ class server_protocol(Protocol):
             server_protocol.send_error()
 
     @staticmethod
-    def send_register_success(success: bool, cl_socket) -> None:
+    def send_register_success(cl_socket, success: bool) -> None:
         """
         Sends a registration success or failure message to the client.
         
@@ -236,7 +239,7 @@ class server_protocol(Protocol):
             server_protocol.send_error()
 
     @staticmethod
-    def return_check(is_found: bool, cl_socket) -> None:
+    def return_check(cl_socket, is_found: bool) -> None:
         """
         Sends the result of a "check if found" operation to the client.
         
