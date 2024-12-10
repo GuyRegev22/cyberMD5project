@@ -20,7 +20,7 @@ class Protocol:
     LENGTH_FIELD_SIZE = 8  # Defines the fixed size for the message length field (8 characters).
 
     @staticmethod
-    def send_msg(data: str, socket) -> None:
+    def send_msg(data, socket) -> None:
         """
         Sends a message over the socket with a prefixed length field.
         
@@ -28,10 +28,10 @@ class Protocol:
         - data (str): The message to send.
         - socket: The socket through which the message will be sent.
         """
-        msg_length: str = str(len(data))
-        zfill_length: str = msg_length.zfill(Protocol.LENGTH_FIELD_SIZE)
-        msg = zfill_length + data
-        socket.send(msg.encode(encoding="latin-1"))
+        msg_length = str(len(data))
+        zfill_length = msg_length.zfill(Protocol.LENGTH_FIELD_SIZE)
+        msg = zfill_length.encode(encoding="latin-1") + data
+        socket.send(msg)
 
     @staticmethod
     def get_msg(my_socket) -> str:
@@ -72,7 +72,7 @@ class client_protocol(Protocol):
         Returns:
         - str: The server's response.
         """
-        cl_socket.send(f"REG|{username}|{password}|{phone_number}".encode(encoding="latin-1"))
+        client_protocol.send_msg(f"REG|{username}|{password}|{phone_number}".encode(encoding="latin-1"), cl_socket)
         return Protocol.get_msg(cl_socket)
 
     @staticmethod
@@ -80,7 +80,7 @@ class client_protocol(Protocol):
         """
         Sends a logout request to the server.
         """
-        cl_socket.send("LOGOUT".encode(encoding="latin-1"))
+        client_protocol.send_msg("LOGOUT".encode(encoding="latin-1"), cl_socket)
 
     @staticmethod
     def login(cl_socket, username, password) -> bool:
@@ -94,14 +94,14 @@ class client_protocol(Protocol):
         Returns:
         - bool: True if login is successful, False otherwise.
         """
-        cl_socket.send(f"LOG|{username}|{password}".encode(encoding="latin-1"))
+        client_protocol.send_msg(f"LOG|{username}|{password}".encode(encoding="latin-1"), cl_socket)
         msg = client_protocol.get_msg(cl_socket)
         if msg.startswith("Error"):
             return False
         return msg == "Logged in successfully"
 
     @staticmethod
-    def get_range(cl_socket) -> tuple[int, int, str] | bool:
+    def get_range(cl_socket, username) -> tuple[int, int, str] | bool:
         """
         Requests a range of numbers to check from the server.
         
@@ -109,7 +109,7 @@ class client_protocol(Protocol):
         - tuple[int, int]: The start and end of the range if successful.
         - False if there is an error.
         """
-        cl_socket.send("GETRANGE".encode(encoding="latin-1"))
+        client_protocol.send_msg(f"GETRANGE|{username}".encode(encoding="latin-1"), cl_socket)
         msg = client_protocol.get_msg(cl_socket)
         if msg.startswith("Error"):
             return False
@@ -120,7 +120,7 @@ class client_protocol(Protocol):
         """
         Notifies the server that the client has finished processing a range.
         """
-        cl_socket.send("FINISHEDRANGE".encode(encoding="latin-1"))
+        client_protocol.send_msg("FINISHEDRANGE".encode(encoding="latin-1"), cl_socket)
 
     @staticmethod
     def send_found(cl_socket, number: int) -> None:
@@ -130,7 +130,7 @@ class client_protocol(Protocol):
         Args:
         - number (int): The found number.
         """
-        cl_socket.send(f"FOUND|{number}".encode(encoding="latin-1"))
+        client_protocol.send_msg(f"FOUND|{number}".encode(encoding="latin-1"), cl_socket)
 
     @staticmethod
     def check_if_found(cl_socket) -> bool:
@@ -140,7 +140,7 @@ class client_protocol(Protocol):
         Returns:
         - bool: True if the number was found, False otherwise.
         """
-        cl_socket.send("CHECK".encode(encoding="latin-1"))
+        client_protocol.send_msg("CHECK".encode(encoding="latin-1"), cl_socket)
         msg = client_protocol.get_msg(cl_socket)
         return msg == "FOUND"
 
@@ -196,9 +196,9 @@ class server_protocol(Protocol):
         Sends an error message to the client.
         """
         if error_msg is None:
-            cl_socket.send("Error".encode(encoding="latin-1"))
+            client_protocol.send_msg("Error".encode(encoding="latin-1"), cl_socket)
         else:
-            cl_socket.send(f"Error|{error_msg}".encode(encoding="latin-1"))
+            client_protocol.send_msg(f"Error|{error_msg}".encode(encoding="latin-1"), cl_socket)
 
     @staticmethod
     def send_range(cl_socket, start: int, end: int, target: str) -> None:
@@ -210,7 +210,7 @@ class server_protocol(Protocol):
         - end (int): The end of the range.
         - target (str): The hash of the target number.
         """
-        cl_socket.send(f"RANGE|{start}|{end}|{target}".encode(encoding="latin-1"))
+        client_protocol.send_msg(f"RANGE|{start}|{end}|{target}".encode(encoding="latin-1"), cl_socket)
 
     @staticmethod
     def send_login_success(cl_socket, success: bool) -> None:
@@ -221,7 +221,7 @@ class server_protocol(Protocol):
         - success (bool): True if login is successful, False otherwise.
         """
         if success:
-            cl_socket.send("Logged in successfully".encode(encoding="latin-1"))
+            client_protocol.send_msg("Logged in successfully".encode(encoding="latin-1"), cl_socket)
         else:
             server_protocol.send_error()
 
@@ -234,7 +234,7 @@ class server_protocol(Protocol):
         - success (bool): True if registration is successful, False otherwise.
         """
         if success:
-            cl_socket.send("Registered successfully".encode(encoding="latin-1"))
+            client_protocol.send_msg("Registered successfully".encode(encoding="latin-1"), cl_socket)
         else:
             server_protocol.send_error()
 
@@ -247,6 +247,6 @@ class server_protocol(Protocol):
         - is_found (bool): True if a number was found, False otherwise.
         """
         if is_found:
-            cl_socket.send("FOUND".encode(encoding="latin-1"))
+            client_protocol.send_msg("FOUND".encode(encoding="latin-1"), cl_socket)
         else:
-            cl_socket.send("NOT FOUND".encode(encoding="latin-1"))
+            client_protocol.send_msg("NOT FOUND".encode(encoding="latin-1"), cl_socket)
