@@ -48,8 +48,10 @@ class Protocol:
         msg_length = my_socket.recv(Protocol.LENGTH_FIELD_SIZE).decode(encoding="latin-1")
         try:
             msg_length = int(msg_length)
-        except ValueError:
-            return "Error"
+        except ValueError as e:
+            print(f"msg_lengthgggggggggggggggggggggggggggggg {msg_length}")
+            
+            return "Error bolbol"
 
         msg = my_socket.recv(msg_length)
         return msg.decode(encoding="latin-1")
@@ -94,8 +96,10 @@ class client_protocol(Protocol):
         Returns:
         - bool: True if login is successful, False otherwise.
         """
-        client_protocol.send_msg(f"LOG|{username}|{password}".encode(encoding="latin-1"), cl_socket)
+        client_protocol.send_msg(f"LOGIN|{username}|{password}".encode(encoding="latin-1"), cl_socket)
+        print("HERE3")
         msg = client_protocol.get_msg(cl_socket)
+        print(f"msg {msg}")
         if msg.startswith("Error"):
             return False
         return msg == "Logged in successfully"
@@ -111,6 +115,8 @@ class client_protocol(Protocol):
         """
         client_protocol.send_msg(f"GETRANGE|{username}".encode(encoding="latin-1"), cl_socket)
         msg = client_protocol.get_msg(cl_socket)
+        if msg.startswith("FOUND"):
+            return True
         if msg.startswith("Error"):
             return False
         return (int(msg.split("|")[1]), int(msg.split("|")[2]), msg.split("|")[3])
@@ -170,9 +176,9 @@ class server_protocol(Protocol):
                 return len(msg_split) == 4
             case "LOGIN":
                 return len(msg_split) == 3
-            case "LOGOUT" | "GETRANGE" | "FINISHEDRANGE" | "CHECK":
+            case "LOGOUT" | "FINISHEDRANGE" | "CHECK":
                 return len(msg_split) == 1
-            case "FOUND":
+            case "FOUND" | "GETRANGE":
                 return len(msg_split) == 2
         return True
 
@@ -186,7 +192,7 @@ class server_protocol(Protocol):
         """
         msg = server_protocol.get_msg(cl_socket)
         while not server_protocol.is_valid(msg):
-            server_protocol.send_error()
+            server_protocol.send_error(cl_socket=cl_socket)
             msg = server_protocol.get_msg(cl_socket)
         return msg.split("|")
 
@@ -196,9 +202,9 @@ class server_protocol(Protocol):
         Sends an error message to the client.
         """
         if error_msg is None:
-            client_protocol.send_msg("Error".encode(encoding="latin-1"), cl_socket)
+            client_protocol.send_msg("Server Error".encode(encoding="latin-1"), cl_socket)
         else:
-            client_protocol.send_msg(f"Error|{error_msg}".encode(encoding="latin-1"), cl_socket)
+            client_protocol.send_msg(f"Server Error|{error_msg}".encode(encoding="latin-1"), cl_socket)
 
     @staticmethod
     def send_range(cl_socket, start: int, end: int, target: str) -> None:
@@ -221,7 +227,7 @@ class server_protocol(Protocol):
         - success (bool): True if login is successful, False otherwise.
         """
         if success:
-            client_protocol.send_msg("Logged in successfully".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg("Logged in successfully".encode(encoding="latin-1"), cl_socket)
         else:
             server_protocol.send_error()
 
