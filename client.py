@@ -11,10 +11,14 @@ class client:
     Represents a client that communicates with a server to register, log in, 
     perform hash calculations, and execute other protocol-defined commands.
     """
-    server_ip = "192.168.0.238"  # Server IP address
+    server_ip = "192.168.2.215"  # Server IP address
     server_port = 5555       # Server port
     connected = False        # Connection state
     client_socket = socket.socket()  # Client socket
+    
+    def __init__(self):
+        self.username = ""
+        # self.password = ""
 
     def is_valid_username(self, username) -> bool:
         """
@@ -57,6 +61,7 @@ class client:
                 print("""Invalid password. Must include at least one uppercase letter and one digit.
                       Length must be between 6 and 16.""")
                 
+        self.username = username
         return username, password
 
     def register(self):
@@ -70,6 +75,7 @@ class client:
         while len(phone_number) != 10 or not phone_number.isdigit():
             print("Invalid phone number. Please enter a 10-digit number.")
             phone_number = input("Enter your phone number: ").strip()
+
         return client_protocol.register(self.client_socket, username, password, phone_number)
 
     def login(self):
@@ -195,10 +201,10 @@ class client:
                 choice = input("Enter your choice: ").strip()
                 while not self.handle_user_input(choice):
                     print("Error occurred. Try again.")
-                while self.not_found:
-                    ans = client_protocol.get_range(self.client_socket)
+                while not stop_event.is_set():
+                    ans = client_protocol.get_range(self.client_socket, self.username)
                     while not ans:
-                        ans = client_protocol.get_range(self.client_socket)
+                        ans = client_protocol.get_range(self.client_socket, self.username)
                     start, end, target_hash = ans
                     result = self.find_md5_match_multiprocessing(start, end, target_hash)
                     if result is not None:
