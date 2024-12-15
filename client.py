@@ -11,7 +11,7 @@ class client:
     Represents a client that communicates with a server to register, log in, 
     perform hash calculations, and execute other protocol-defined commands.
     """
-    server_ip = "127.0.0.1"  # Server IP address
+    server_ip = "192.168.2.215"  # Server IP address
     server_port = 5555       # Server port
     connected = False        # Connection state
     client_socket = socket.socket()  # Client socket
@@ -166,19 +166,27 @@ class client:
 
 
 
+
+    def input_thread(self):
+        while self.connected and not self.found:
+            user_input = input("Enter logout to exit: ").strip().lower()
+            if user_input.lower() == "logout":
+                print("Logging out...")
+                self.logout()
+                self.connected = False
+                break
+            else:
+                print(self.handle_user_input(user_input))
+
     def main(self):
-        """
-        Main client logic for interacting with the server and performing tasks.
-
-        :param stop_event: A threading event to signal stopping the loop.
-        """
-
-
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
+            
         except socket.error as e:
             print(f"Failed to connect to the server: {e}")
             return
+
+
 
         
         try:
@@ -192,7 +200,12 @@ class client:
                 while not ans:
                     print("Error occurred. Try again.")
                     ans = self.handle_user_input(choice)
-                while not self.found:
+                
+                self.connected = True               
+                input_thread = threading.Thread(target=self.input_thread)
+                input_thread.start()
+
+                while not self.found and self.connected:
                     ans = client_protocol.get_range(self.client_socket, self.username)
                     while not ans:
                         ans = client_protocol.get_range(self.client_socket, self.username)
