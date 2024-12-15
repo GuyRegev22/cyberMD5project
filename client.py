@@ -16,10 +16,13 @@ class client:
     connected = False        # Connection state
     client_socket = socket.socket()  # Client socket
     found = False
-    
+
     def __init__(self):
+        """
+        Initializes the client instance.
+        Sets up initial variables such as username.
+        """
         self.username = ""
-        # self.password = ""
 
     def is_valid_username(self, username) -> bool:
         """
@@ -28,7 +31,7 @@ class client:
         :param username: The username string to validate.
         :return: True if valid, False otherwise.
         """
-        return (4 <= len(username) <= 16 and  # Length between 4 and 16
+        return (4 <= len(username) <= 16 and
                 re.fullmatch(r"[a-zA-Z0-9]+", username) is not None)
 
     def is_valid_password(self, password) -> bool:
@@ -38,9 +41,9 @@ class client:
         :param password: The password string to validate.
         :return: True if valid, False otherwise.
         """
-        return (6 <= len(password) <= 16 and  # Length between 6 and 16
-                any(c.isupper() for c in password) and  # At least one uppercase letter
-                any(c.isdigit() for c in password) and  # At least one digit
+        return (6 <= len(password) <= 16 and
+                any(c.isupper() for c in password) and
+                any(c.isdigit() for c in password) and
                 re.fullmatch(r"[a-zA-Z0-9]+", password) is not None)
 
     def user_connection(self):
@@ -53,15 +56,14 @@ class client:
         while not self.is_valid_username(username):
             username = input("Enter a username: ").strip()
             if not self.is_valid_username(username):
-                print("Invalid username. Spaces are forbidden. Use only letters and numbers.")
+                print("Invalid username. Use only letters and numbers.")
 
         password = ""
         while not self.is_valid_password(password):
             password = input("Enter a password: ").strip()
             if not self.is_valid_password(password):
-                print("""Invalid password. Must include at least one uppercase letter and one digit.
-                      Length must be between 6 and 16.""")
-                
+                print("Invalid password. Must include at least one uppercase letter and one digit.")
+
         self.username = username
         return username, password
 
@@ -103,7 +105,10 @@ class client:
         :param user_input: The input command from the user.
         :return: The result of the command execution or None if invalid.
         """
+        if user_input is None:
+            return
         command = user_input.strip().lower()
+
         if command == "register":
             if self.connected:
                 print("You are already connected.")
@@ -118,7 +123,7 @@ class client:
             if self.connected:
                 return self.logout()
             else:
-                print("Invalid command. Not connected.")
+                print("You are not connected.")
         else:
             print("Invalid input.")
 
@@ -164,10 +169,12 @@ class client:
                     return result
         return None
 
-
-
-
     def input_thread(self):
+        """
+        Runs in a separate thread to handle user input during the connection.
+        Allows the user to log out or perform other actions.
+        """
+        time.sleep(3)
         while self.connected and not self.found:
             user_input = input("Enter logout to exit: ").strip().lower()
             if user_input.lower() == "logout":
@@ -179,16 +186,16 @@ class client:
                 print(self.handle_user_input(user_input))
 
     def main(self):
+        """
+        Main client logic for connecting to the server, managing input threads,
+        and processing server communication.
+        """
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
-            
         except socket.error as e:
             print(f"Failed to connect to the server: {e}")
             return
 
-
-
-        
         try:
             while not self.found:
                 print("\n--- Client Menu ---")
@@ -199,9 +206,9 @@ class client:
                 ans = self.handle_user_input(choice)
                 while not ans:
                     print("Error occurred. Try again.")
+                    choice = input("Enter your choice: ").strip()
                     ans = self.handle_user_input(choice)
-                
-                self.connected = True               
+                self.connected = True
                 input_thread = threading.Thread(target=self.input_thread)
                 input_thread.start()
 
@@ -209,7 +216,7 @@ class client:
                     ans = client_protocol.get_range(self.client_socket, self.username)
                     while not ans:
                         ans = client_protocol.get_range(self.client_socket, self.username)
-                    if isinstance(ans, bool) and ans:   
+                    if isinstance(ans, bool) and ans:
                         self.found = True
                         print("Number found. Stopping search.")
                         break
@@ -219,14 +226,11 @@ class client:
                         client_protocol.send_found(self.client_socket, result)
                     client_protocol.finished_range(self.client_socket)
 
-
         except Exception as e:
             print(f"Error: {e}")
         finally:
             self.client_socket.close()
 
 if __name__ == "__main__":
-    client_inst = client() 
-    client_inst.main() # Create the client instance
-      # Event to manage thread stopping
-
+    client_inst = client()
+    client_inst.main()  # Create the client instance
