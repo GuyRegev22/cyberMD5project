@@ -31,6 +31,7 @@ class Protocol:
         msg_length = str(len(data))
         zfill_length = msg_length.zfill(Protocol.LENGTH_FIELD_SIZE)
         msg = zfill_length.encode(encoding="latin-1") + data
+        print(msg)
         socket.send(msg)
 
     @staticmethod
@@ -229,7 +230,7 @@ class server_protocol(Protocol):
         if success:
             server_protocol.send_msg("Logged in successfully".encode(encoding="latin-1"), cl_socket)
         else:
-            server_protocol.send_error()
+            server_protocol.send_error(cl_socket=cl_socket)
 
     @staticmethod
     def send_register_success(cl_socket, success: bool) -> None:
@@ -242,7 +243,7 @@ class server_protocol(Protocol):
         if success:
             client_protocol.send_msg("Registered successfully".encode(encoding="latin-1"), cl_socket)
         else:
-            server_protocol.send_error()
+            server_protocol.send_error(cl_socket=cl_socket)
 
     @staticmethod
     def return_check(cl_socket, is_found: bool) -> None:
