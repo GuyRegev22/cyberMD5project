@@ -49,10 +49,8 @@ class Protocol:
         msg_length = my_socket.recv(Protocol.LENGTH_FIELD_SIZE).decode(encoding="latin-1")
         try:
             msg_length = int(msg_length)
-        except ValueError as e:
-            print(f"msg_lengthgggggggggggggggggggggggggggggg {msg_length}")
-            
-            return "Error bolbol"
+        except ValueError as e:            
+            return f"Error {e}"
 
         msg = my_socket.recv(msg_length)
         return msg.decode(encoding="latin-1")
@@ -98,9 +96,7 @@ class client_protocol(Protocol):
         - bool: True if login is successful, False otherwise.
         """
         client_protocol.send_msg(f"LOGIN|{username}|{password}".encode(encoding="latin-1"), cl_socket)
-        print("HERE3")
         msg = client_protocol.get_msg(cl_socket)
-        print(f"msg {msg}")
         if msg.startswith("Error"):
             return False
         return msg == "Logged in successfully"
@@ -241,7 +237,7 @@ class server_protocol(Protocol):
         - success (bool): True if registration is successful, False otherwise.
         """
         if success:
-            client_protocol.send_msg("Registered successfully".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg("Registered successfully".encode(encoding="latin-1"), cl_socket)
         else:
             server_protocol.send_error(cl_socket=cl_socket)
 
