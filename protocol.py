@@ -31,7 +31,7 @@ class Protocol:
         msg_length = str(len(data))
         zfill_length = msg_length.zfill(Protocol.LENGTH_FIELD_SIZE)
         msg = zfill_length.encode(encoding="latin-1") + data
-        print(msg)
+        #print(msg)
         socket.send(msg)
 
     @staticmethod
