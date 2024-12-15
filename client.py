@@ -11,7 +11,7 @@ class client:
     Represents a client that communicates with a server to register, log in, 
     perform hash calculations, and execute other protocol-defined commands.
     """
-    server_ip = "192.168.2.215"  # Server IP address
+    server_ip = "127.0.0.1"  # Server IP address
     server_port = 5555       # Server port
     connected = False        # Connection state
     client_socket = socket.socket()  # Client socket
