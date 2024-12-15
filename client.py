@@ -15,6 +15,7 @@ class client:
     server_port = 5555       # Server port
     connected = False        # Connection state
     client_socket = socket.socket()  # Client socket
+    found = False
     
     def __init__(self):
         self.username = ""
@@ -163,17 +164,7 @@ class client:
                     return result
         return None
 
-    def background_listener(self, stop_event):
-        """
-        Background thread that periodically checks if the target number is found.
 
-        :param stop_event: A threading event to signal stopping the thread.
-        """
-        while not stop_event.is_set():
-            if client_protocol.check_if_found(self.client_socket):
-                print("Number found. Stopping search.")
-                stop_event.set()
-            time.sleep(2)
 
     def main(self):
         """
@@ -188,31 +179,33 @@ class client:
         except socket.error as e:
             print(f"Failed to connect to the server: {e}")
             return
-        stop_event = threading.Event()
-        background_thread = threading.Thread(target=client_inst.background_listener, args=(stop_event,), daemon=True)
-        background_thread.start()
+
         
         try:
-            while not stop_event.is_set():
+            while not self.found:
                 print("\n--- Client Menu ---")
                 print("1. Register")
                 print("2. Login")
                 print("3. Logout")
                 choice = input("Enter your choice: ").strip()
-                while not self.handle_user_input(choice):
+                ans = self.handle_user_input(choice)
+                while not ans:
                     print("Error occurred. Try again.")
-                while not stop_event.is_set():
+                    ans = self.handle_user_input(choice)
+                while not self.found:
                     ans = client_protocol.get_range(self.client_socket, self.username)
                     while not ans:
                         ans = client_protocol.get_range(self.client_socket, self.username)
+                    if isinstance(ans, bool) and ans:   
+                        self.found = True
+                        print("Number found. Stopping search.")
+                        break
                     start, end, target_hash = ans
                     result = self.find_md5_match_multiprocessing(start, end, target_hash)
                     if result is not None:
                         client_protocol.send_found(self.client_socket, result)
                     client_protocol.finished_range(self.client_socket)
-                    if stop_event.is_set():
-                        break
-                stop_event.set()
+
 
         except Exception as e:
             print(f"Error: {e}")
