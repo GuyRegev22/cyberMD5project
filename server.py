@@ -22,13 +22,13 @@ class server:
         '''
         self.ip = IP
         self.PORT = PORT
-        self.range = (3200000000, 3300000000)  # Default starting range
+        self.range = (3600000000, 3700000000)  # Default starting range
         self.queue = []  # Queue to hold unprocessed ranges
         self.client_sockets = []  # Active client sockets
         self.TARGET = "EC9C0F7EDCC18A98B1F31853B1813301".lower()  # Target hash for validation
         self.INC = 10000000
         self.found = False  # Flag to indicate if the target has been found
-
+        self.num = None
     def create_socket(self):
         '''
         Create and bind the server socket, then start listening for client connections.
@@ -170,7 +170,7 @@ class server:
             bool: True if the target is found, False otherwise.
         '''
         if self.found:
-            protocol.server_protocol.return_check(is_found=self.found, cl_socket=sock)
+            protocol.server_protocol.return_check(is_found=self.found, cl_socket=sock, num_found=self.num)
             return True
 
         conn = sqlite3.connect("demo.db")
@@ -209,7 +209,9 @@ class server:
         result = hashlib.md5(f"{num}".encode()).hexdigest()
         if result == self.TARGET:
             print(f"\n\n\n\n{num}\n\n\n\n")
+            self.num = num
             self.found = True
+            
 
     def cleanup_unfinished_missions(self, username):
         '''

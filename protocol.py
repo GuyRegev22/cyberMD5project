@@ -117,7 +117,7 @@ class client_protocol(Protocol):
         client_protocol.send_msg(f"GETRANGE|{username}".encode(encoding="latin-1"), cl_socket)
         msg = client_protocol.get_msg(cl_socket)
         if msg.startswith("FOUND"):
-            return True
+            return int(msg.split("|")[1])
         if msg.startswith("Error"):
             return False
         return (int(msg.split("|")[1]), int(msg.split("|")[2]), msg.split("|")[3])
@@ -132,17 +132,6 @@ class client_protocol(Protocol):
         """
         client_protocol.send_msg(f"FOUND|{number}".encode(encoding="latin-1"), cl_socket)
 
-    @staticmethod
-    def check_if_found(cl_socket) -> bool:
-        """
-        Checks with the server if a number has been found.
-        
-        Returns:
-        - bool: True if the number was found, False otherwise.
-        """
-        client_protocol.send_msg("CHECK".encode(encoding="latin-1"), cl_socket)
-        msg = client_protocol.get_msg(cl_socket)
-        return msg == "FOUND"
 
 
 class server_protocol(Protocol):
@@ -239,7 +228,7 @@ class server_protocol(Protocol):
             server_protocol.send_error(cl_socket=cl_socket)
 
     @staticmethod
-    def return_check(cl_socket, is_found: bool) -> None:
+    def return_check(cl_socket, is_found: bool, num_found: int) -> None:
         """
         Sends the result of a "check if found" operation to the client.
         
@@ -247,6 +236,6 @@ class server_protocol(Protocol):
         - is_found (bool): True if a number was found, False otherwise.
         """
         if is_found:
-            client_protocol.send_msg("FOUND".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg(f"FOUND|{num_found}".encode(encoding="latin-1"), cl_socket)
         else:
-            client_protocol.send_msg("NOT FOUND".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg("NOT FOUND".encode(encoding="latin-1"), cl_socket)
