@@ -5,17 +5,19 @@ import multiprocessing
 import threading
 import time
 from protocol import client_protocol
+import sys
 
 class client:
     """
     Represents a client that communicates with a server to register, log in, 
     perform hash calculations, and execute other protocol-defined commands.
     """
-    server_ip = "192.168.2.215"  # Server IP address
+    server_ip = "192.168.0.237"  # Server IP address
     server_port = 5555       # Server port
     connected = False        # Connection state
     client_socket = socket.socket()  # Client socket
     found = False
+    start_time = 0
 
     def __init__(self):
         """
@@ -176,7 +178,7 @@ class client:
         """
         time.sleep(3)
         while self.connected and not self.found:
-            user_input = input("Enter logout to exit: ").strip().lower()
+            user_input = input("Enter logout to exit: \n").strip().lower()
             if user_input.lower() == "logout":
                 print("Logging out...")
                 self.logout()
@@ -190,6 +192,7 @@ class client:
         Main client logic for connecting to the server, managing input threads,
         and processing server communication.
         """
+        print("searching for connection...")
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
         except socket.error as e:
@@ -209,22 +212,26 @@ class client:
                     choice = input("Enter your choice: ").strip()
                     ans = self.handle_user_input(choice)
                 self.connected = True
-                input_thread = threading.Thread(target=self.input_thread)
+                input_thread = threading.Thread(target=self.input_thread, daemon = True)
                 input_thread.start()
-
+                self.start_time = time.time()
+                i = 0
                 while not self.found and self.connected:
                     ans = client_protocol.get_range(self.client_socket, self.username)
                     while not ans:
                         ans = client_protocol.get_range(self.client_socket, self.username)
+                    if time.time() - self.start_time > 8: 
+                        print("seraching for number" + ('.  ' if i== 0 else '.' * (i + 1)), end='\r', flush=True)
+                        i = (i + 1) % 3       
+
                     if isinstance(ans, bool) and ans:
                         self.found = True
                         print("Number found. Stopping search.")
-                        break
+                        sys.exit()
                     start, end, target_hash = ans
                     result = self.find_md5_match_multiprocessing(start, end, target_hash)
                     if result is not None:
                         client_protocol.send_found(self.client_socket, result)
-                    client_protocol.finished_range(self.client_socket)
 
         except Exception as e:
             print(f"Error: {e}")
