@@ -47,12 +47,16 @@ class Protocol:
         - "Error" if the length field is invalid.
         """
         msg_length = my_socket.recv(Protocol.LENGTH_FIELD_SIZE).decode(encoding="latin-1")
+        while len(msg_length) < Protocol.LENGTH_FIELD_SIZE:
+            msg_length += my_socket.recv(Protocol.LENGTH_FIELD_SIZE - len(msg_length)).decode(encoding="latin-1")
         try:
             msg_length = int(msg_length)
         except ValueError as e:            
             return f"Error {e}"
 
         msg = my_socket.recv(msg_length)
+        while len(msg) < msg_length:
+            msg += my_socket.recv(msg_length - len(msg))
         return msg.decode(encoding="latin-1")
 
 
@@ -117,13 +121,6 @@ class client_protocol(Protocol):
         if msg.startswith("Error"):
             return False
         return (int(msg.split("|")[1]), int(msg.split("|")[2]), msg.split("|")[3])
-
-    @staticmethod
-    def finished_range(cl_socket) -> None:
-        """
-        Notifies the server that the client has finished processing a range.
-        """
-        client_protocol.send_msg("FINISHEDRANGE".encode(encoding="latin-1"), cl_socket)
 
     @staticmethod
     def send_found(cl_socket, number: int) -> None:
