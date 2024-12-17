@@ -12,7 +12,7 @@ class client:
     Represents a client that communicates with a server to register, log in, 
     perform hash calculations, and execute other protocol-defined commands.
     """
-    server_ip = "192.168.0.237"  # Server IP address
+    server_ip = "127.0.0.1"  # Server IP address
     server_port = 5555       # Server port
     connected = False        # Connection state
     client_socket = socket.socket()  # Client socket
@@ -220,13 +220,15 @@ class client:
                     ans = client_protocol.get_range(self.client_socket, self.username)
                     while not ans:
                         ans = client_protocol.get_range(self.client_socket, self.username)
-                    if time.time() - self.start_time > 8: 
-                        print("seraching for number" + ('.  ' if i== 0 else '.' * (i + 1)), end='\r', flush=True)
+                    if time.time() - self.start_time > 5: 
+                        print("Seraching for number" + ('.  ' if i== 0 else '.' * (i + 1)), end='\r', flush=True)
                         i = (i + 1) % 3       
 
-                    if isinstance(ans, bool) and ans:
+                    if isinstance(ans, int):
                         self.found = True
                         print("Number found. Stopping search.")
+                        print(f"The number was: {ans}" )
+                        print("Thanks you for helping!")
                         sys.exit()
                     start, end, target_hash = ans
                     result = self.find_md5_match_multiprocessing(start, end, target_hash)
