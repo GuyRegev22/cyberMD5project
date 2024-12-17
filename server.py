@@ -22,10 +22,11 @@ class server:
         '''
         self.ip = IP
         self.PORT = PORT
-        self.range = (0, 0)  # Default starting range
+        self.range = (3200000000, 3300000000)  # Default starting range
         self.queue = []  # Queue to hold unprocessed ranges
         self.client_sockets = []  # Active client sockets
-        self.TARGET = "cfb64aed991122d76e1908af262d7ff2"  # Target hash for validation
+        self.TARGET = "EC9C0F7EDCC18A98B1F31853B1813301".lower()  # Target hash for validation
+        self.INC = 10000000
         self.found = False  # Flag to indicate if the target has been found
 
     def create_socket(self):
@@ -70,27 +71,40 @@ class server:
             while True:
                 parsed_req = protocol.server_protocol.get_request(cl_socket)
 
-                if parsed_req[0] == 'REG':
-                    ret_code = self.register_user(username=parsed_req[1], password=parsed_req[2], phone=parsed_req[3])
-                    if ret_code: username = parsed_req[1]
-                    protocol.server_protocol.send_register_success(success=ret_code, cl_socket=cl_socket)
-                elif parsed_req[0] == 'LOGIN':
-                    ret_code = self.authenticate_user(username=parsed_req[1], password=parsed_req[2])
-                    if ret_code: username = parsed_req[1]
-                    protocol.server_protocol.send_login_success(success=ret_code, cl_socket=cl_socket)
-                elif parsed_req[0] == 'GETRANGE':
-                    handle_cal = self.handle_calc_req(parsed_req[1], cl_socket)
-                    if handle_cal: break
-                elif parsed_req[0] == 'FOUND':
-                    self.valid_finding(parsed_req[1])
-                elif parsed_req[0] == 'LOGOUT':
-                    print("Some client logged out!")
-                    break
-                elif parsed_req[0] == "FINISHEDRANGE":
-                    continue
-                else:
-                    break
+                if username == None: 
+                    match parsed_req[0]:
+                        case 'REG':
+                            ret_code = self.register_user(username=parsed_req[1], password=parsed_req[2], phone=parsed_req[3])
+                            if ret_code:
+                                username = parsed_req[1]
+                            protocol.server_protocol.send_register_success(success=ret_code, cl_socket=cl_socket)
 
+                        case 'LOGIN':
+                            ret_code = self.authenticate_user(username=parsed_req[1], password=parsed_req[2])
+                            if ret_code:
+                                username = parsed_req[1]
+                                print(f"[*] {username} Logged In [*]")
+                            protocol.server_protocol.send_login_success(success=ret_code, cl_socket=cl_socket)
+                        case _: #Error cases
+                            protocol.server_protocol.send_error(cl_socket=cl_socket, error_msg="[*]Error: Client is not logged in! [*]")
+                            continue
+                else:
+                    match parsed_req[0]:
+                        case 'GETRANGE':
+                            handle_cal = self.handle_calc_req(parsed_req[1], cl_socket)
+                            if handle_cal:
+                                break  # Exit early like `break`
+
+                        case 'FOUND':
+                            self.valid_finding(parsed_req[1])
+
+                        case 'LOGOUT':
+                            print("Some client logged out!")
+                            break  # Exit early like `break`
+
+                        case _:
+                            protocol.server_protocol.send_error(cl_socket=cl_socket, error_msg="[*]Error: Unknown request! [*]")
+                            break  # Default case, exit
         except WindowsError:
             print("Client disconnected unexpectedly")
         except Exception as e:
@@ -167,8 +181,8 @@ class server:
             conn.commit()
 
             if not self.queue:
-                new_range_start = self.range[0] + 10000
-                new_range_end = new_range_start + 10000
+                new_range_start = self.range[0] + self.INC
+                new_range_end = new_range_start + self.INC
                 self.range = (new_range_start, new_range_end)
             else:
                 new_range_start, new_range_end = self.queue.pop()
