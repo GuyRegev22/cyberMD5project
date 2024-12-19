@@ -228,7 +228,7 @@ class client:
                         self.found = True
                         print("Number found. Stopping search.")
                         print(f"The number was: {ans}" )
-                        print("Thanks you for helping!")
+                        print("Thank you for helping!")
                         sys.exit()
                     start, end, target_hash = ans
                     result = self.find_md5_match_multiprocessing(start, end, target_hash)
