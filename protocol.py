@@ -185,9 +185,9 @@ class server_protocol(Protocol):
         Sends an error message to the client.
         """
         if error_msg is None:
-            client_protocol.send_msg("Server Error".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg("Server Error".encode(encoding="latin-1"), cl_socket)
         else:
-            client_protocol.send_msg(f"Server Error|{error_msg}".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg(f"Server Error|{error_msg}".encode(encoding="latin-1"), cl_socket)
 
     @staticmethod
     def send_range(cl_socket, start: int, end: int, target: str) -> None:
@@ -199,7 +199,7 @@ class server_protocol(Protocol):
         - end (int): The end of the range.
         - target (str): The hash of the target number.
         """
-        client_protocol.send_msg(f"RANGE|{start}|{end}|{target}".encode(encoding="latin-1"), cl_socket)
+        server_protocol.send_msg(f"RANGE|{start}|{end}|{target}".encode(encoding="latin-1"), cl_socket)
 
     @staticmethod
     def send_login_success(cl_socket, success: bool) -> None:
