@@ -47,6 +47,8 @@ class Protocol:
         - "Error" if the length field is invalid.
         """
         msg_length = my_socket.recv(Protocol.LENGTH_FIELD_SIZE).decode(encoding="latin-1")
+        if msg_length == "":
+            return ""
         while len(msg_length) < Protocol.LENGTH_FIELD_SIZE:
             msg_length += my_socket.recv(Protocol.LENGTH_FIELD_SIZE - len(msg_length)).decode(encoding="latin-1")
         try:
@@ -106,7 +108,7 @@ class client_protocol(Protocol):
         return msg == "Logged in successfully"
 
     @staticmethod
-    def get_range(cl_socket, username) -> tuple[int, int, str] | bool:
+    def get_range(cl_socket, username) -> tuple[int, int, str] | bool | int:
         """
         Requests a range of numbers to check from the server.
         
@@ -150,6 +152,8 @@ class server_protocol(Protocol):
         Returns:
         - bool: True if the message is valid, False otherwise.
         """
+        if msg == "":
+            return True
         msg_split = msg.split("|")
         if msg_split[0] not in ["REG", "LOGIN", "LOGOUT", "GETRANGE", "FINISHEDRANGE", "FOUND", "CHECK"]:
             return False
