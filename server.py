@@ -24,7 +24,8 @@ class Server:
         """
         self.IP = IP
         self.PORT = PORT
-        self.range = (3600000000, 3700000000)  # Default starting range
+        # self.range = (3600000000, 3700000000)  # Default starting range
+        self.range = (0, 10000000)
         self.queue = []  # Queue to hold unprocessed ranges
         self.client_sockets = []  # Active client sockets
         self.TARGET = "EC9C0F7EDCC18A98B1F31853B1813301".lower()  # Target hash for validation
@@ -76,50 +77,60 @@ class Server:
         username = None  # Store the current client's username
         try:
             while not self.stop_event.is_set():
-                parsed_req = protocol.server_protocol.get_request(cl_socket)
+                try:
+                    parsed_req = protocol.server_protocol.get_request(cl_socket)
+                    print(parsed_req)
+                    if parsed_req[0] == '': 
+                        break
 
-                if username is None:  # Client not authenticated
-                    match parsed_req[0]:
-                        case 'REG':  # Registration
-                            ret_code = self.register_user(username=parsed_req[1], password=parsed_req[2], phone=parsed_req[3])
-                            if ret_code:
-                                username = parsed_req[1]
-                            protocol.server_protocol.send_register_success(success=ret_code, cl_socket=cl_socket)
+                    if username is None:  # Client not authenticated
+                        match parsed_req[0]:
+                            case 'REG':  # Registration
+                                ret_code = self.register_user(username=parsed_req[1], password=parsed_req[2], phone=parsed_req[3])
+                                # if ret_code:
+                                #     username = parsed_req[1]
+                                protocol.server_protocol.send_register_success(success=ret_code, cl_socket=cl_socket)
 
-                        case 'LOGIN':  # Login
-                            ret_code = self.authenticate_user(username=parsed_req[1], password=parsed_req[2])
-                            if ret_code:
-                                username = parsed_req[1]
-                                print(f"[*] {username} Logged In [*]")
-                            protocol.server_protocol.send_login_success(success=ret_code, cl_socket=cl_socket)
+                            case 'LOGIN':  # Login
+                                ret_code = self.authenticate_user(username=parsed_req[1], password=parsed_req[2])
+                                if ret_code:
+                                    username = parsed_req[1]
+                                    print(f"[*] {username} Logged In [*]")
+                                protocol.server_protocol.send_login_success(success=ret_code, cl_socket=cl_socket)
 
-                        case _:  # Error: Unauthenticated action
-                            protocol.server_protocol.send_error(cl_socket=cl_socket, error_msg="Error: Client is not logged in!")
-                            continue
-                else:  # Authenticated client actions
-                    match parsed_req[0]:
-                        case 'GETRANGE':  # Request range
-                            handle_cal = self.handle_calc_req(username, cl_socket)
-                            if handle_cal:
-                                break  # End session if the target was found
+                            case _:  # Error: Unauthenticated action
+                                protocol.server_protocol.send_error(cl_socket=cl_socket, error_msg="Error: Client is not logged in!")
+                                continue
+                    else:  # Authenticated client actions
+                        match parsed_req[0]:
+                            case 'GETRANGE':  # Request range
+                                handle_cal = self.handle_calc_req(username, cl_socket)
+                                if handle_cal:
+                                    break  # End session if the target was found
 
-                        case 'FOUND':  # Target found
-                            self.valid_finding(parsed_req[1])
+                            case 'FOUND':  # Target found
+                                self.valid_finding(parsed_req[1])
 
-                        case 'LOGOUT':  # Client logout
-                            print(f"{username} logged out.")
-                            break
+                            case 'LOGOUT':  # Client logout
+                                print(f"{username} logged out.")
+                                break
 
-                        case _:  # Unknown request
-                            protocol.server_protocol.send_error(cl_socket=cl_socket, error_msg="Error: Unknown request.")
-                            break
+                            case _:  # Unknown request
+                                protocol.server_protocol.send_error(cl_socket=cl_socket, error_msg="Error: Unknown request.")
+                                break
+                except (ConnectionResetError, BrokenPipeError):
+                    print(f"Client {username or 'unknown'} disconnected unexpectedly.")
+                    break
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error handling client: {e}")
         finally:
             if username:
-                self.load_unfinished_missions(username)
-            print(f"Client disconnected: {username}")
-            self.client_sockets.remove(cl_socket)
+                self.load_unfinished_missions(username) #I know it may be weird
+            print(f"Cleaning up for client: {username}")
+            with self.lock:
+                if cl_socket in self.client_sockets:
+                    self.client_sockets.remove(cl_socket)
+            print(f"Client {username or 'unknown'} disconnected.")
             cl_socket.close()
 
     def register_user(self, username, password, phone):
@@ -176,12 +187,12 @@ class Server:
 
         Returns:
             bool: True if the target is found, False otherwise.
-        """
-        if self.found:
-            protocol.server_protocol.return_check(is_found=self.found, cl_socket=sock, num_found=self.num)
-            return True
-
+        """        
         with self.lock:
+            if self.found:
+                protocol.server_protocol.return_check(is_found=self.found, cl_socket=sock, num_found=self.num)
+                return True
+
             conn = sqlite3.connect("demo.db")
             cursor = conn.cursor()
             try:
@@ -213,11 +224,12 @@ class Server:
         Args:
             num (int): Number sent by the client.
         """
-        result = hashlib.md5(f"{num}".encode()).hexdigest()
-        if result == self.TARGET:
-            print(f"\nTarget found: {num}\n")
-            self.num = num
-            self.found = True
+        with self.lock:
+            result = hashlib.md5(f"{num}".encode()).hexdigest()
+            if result == self.TARGET:
+                print(f"\nTarget found: {num}\n")
+                self.num = num
+                self.found = True
 
     def load_unfinished_missions(self, user=None):
         """
