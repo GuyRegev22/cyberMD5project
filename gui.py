@@ -20,34 +20,52 @@ class ClientGUI:
         self.username = ""
         self.found = False
         self.start_time = 0
+        self.logged_in = False
 
+        self.root.withdraw() # hide root
         self.connect_to_server()
+        if not self.connected:
+            self.root.destroy()
+            return
+        self.root.deiconify() # show root after connection
         self.setup_gui()
+        self.label.config(text="Please register or login.")
 
     def setup_gui(self):
         self.frame = tk.Frame(self.root)
-        self.frame.pack(pady=20)
+        self.frame.pack(padx=20, pady=20)
 
         tk.Label(self.frame, text="Username:").grid(row=0, column=0)
         self.username_entry = tk.Entry(self.frame)
-        self.username_entry.grid(row=0, column=1)
+        self.username_entry.grid(row=0, column=1, columnspan=2)
 
         tk.Label(self.frame, text="Password:").grid(row=1, column=0)
         self.password_entry = tk.Entry(self.frame, show="*")
-        self.password_entry.grid(row=1, column=1)
+        self.password_entry.grid(row=1, column=1, columnspan=2)
 
         tk.Label(self.frame, text="Phone Number:").grid(row=2, column=0)
         self.phone_entry = tk.Entry(self.frame)
-        self.phone_entry.grid(row=2, column=1)
+        self.phone_entry.grid(row=2, column=1, columnspan=2)
 
         self.register_button = tk.Button(self.frame, text="Register", command=self.register)
-        self.register_button.grid(row=3, column=0)
+        self.register_button.grid(row=3, column=0, sticky="nsew", padx=(0, 5))
 
         self.login_button = tk.Button(self.frame, text="Login", command=self.login)
-        self.login_button.grid(row=3, column=1)
+        self.login_button.grid(row=3, column=1, sticky="nsew", padx=5)
 
         self.logout_button = tk.Button(self.frame, text="Logout", command=self.logout)
-        self.logout_button.grid(row=4, column=0, columnspan=2)
+        self.logout_button.grid(row=3, column=2, sticky="nsew", padx=(5, 0))
+        
+        self.label = tk.Label(self.frame, text="Welcome to the Client GUI")
+        self.label.grid(row=4, column=0, columnspan=3)
+
+        # Center the window on the screen
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
 
         # Set focus back to the username entry after displaying messages
         self.root.focus_force()
@@ -95,8 +113,10 @@ class ClientGUI:
             response = client_protocol.register(self.client_socket, username, password, phone_number)
             if response:
                 messagebox.showinfo("Success", "Registration Successful")
+                self.label.config(text="You have registered, Please click login.")
             else:
-                messagebox.showerror("Failed", "Registration Failed")
+                messagebox.showerror("Failed", "Registration on server failed")
+                self.label.config(text="Please retry registration.")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -106,6 +126,7 @@ class ClientGUI:
         username = self.username_entry.get()
         password = self.password_entry.get()
 
+        # Validate username/password first
         if not self.validate_username(username) or not self.validate_password(password):
             messagebox.showerror("Invalid Input", "Invalid username or password format.")
             self.username_entry.focus_set()
@@ -117,6 +138,24 @@ class ClientGUI:
                 messagebox.showinfo("Success", "Login Successful")
                 self.connected = True
                 self.username = username
+
+                # Hide all widgets except the logout button and label
+                for widget in self.frame.winfo_children():
+                    if widget not in [self.logout_button, self.label]:
+                        widget.grid_remove()
+
+                # Remove any old geometry management on label/logout_button
+                self.logout_button.grid_remove()
+                self.label.grid_remove()
+
+                # (Optional) Place the label higher up
+                self.label.config(text="Searching for the number...")
+                self.label.place(relx=0.5, rely=0.25, anchor=tk.CENTER)
+
+                # Center the logout button
+                self.logout_button.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+
+                self.logged_in = True
                 self.start_hash_search()
             else:
                 messagebox.showerror("Failed", "Login Failed")
@@ -126,15 +165,25 @@ class ClientGUI:
         self.username_entry.focus_set()
 
     def logout(self):
-        if not self.connected:
+        if not self.logged_in:
             messagebox.showwarning("Warning", "Not logged in.")
             self.username_entry.focus_set()
             return
 
         try:
             client_protocol.logout(self.client_socket)
+            self.logged_in = False
             messagebox.showinfo("Success", "Logout Successful")
-            self.connected = False
+
+            # Remove place geometry for logout button and label
+            self.logout_button.place_forget()
+            self.label.place_forget()
+
+            # Restore all widgets with grid
+            for widget in self.frame.winfo_children():
+                widget.grid()
+
+            self.label.config(text="Welcome to the Client GUI")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -144,7 +193,8 @@ class ClientGUI:
         threading.Thread(target=self.hash_search_loop, daemon=True).start()
 
     def hash_search_loop(self):
-        while self.connected and not self.found:
+        while self.connected and self.logged_in and not self.found:
+            print(self.connected, self.logged_in, self.found)
             ans = client_protocol.get_range(self.client_socket, self.username)
             while isinstance(ans, bool) and not ans:
                 ans = client_protocol.get_range(self.client_socket, self.username)
@@ -184,5 +234,6 @@ def find_md5_match(start, end, target_hash, num_processes=None):
 if __name__ == "__main__":
     root = tk.Tk()
     app = ClientGUI(root)
-    root.mainloop()
+    if app.connected:
+        root.mainloop()
     app.client_socket.close()
