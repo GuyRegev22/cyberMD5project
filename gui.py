@@ -18,7 +18,7 @@ class ClientGUI:
         self.aes_key = None
         self.root = root
         self.root.title("Client GUI")
-        self.server_ip = "192.168.0.238"
+        self.server_ip = "192.168.0.237"
         self.server_port = 5555
         self.client_socket = socket.socket()
         self.connected = False
@@ -40,8 +40,11 @@ class ClientGUI:
         sock = self.client_socket
         client_protocol.send_msg_plaintext(sock, "Client hello")
         serialized_server_public_key = client_protocol.get_msg_plaintext(sock)
+        
         server_public_key = serialization.load_pem_public_key(serialized_server_public_key)
+        print("server publickey: ", server_public_key)
         self.aes_key = os.urandom(32)  # AES-256
+        print("aes key: ", self.aes_key)
         encrypted_aes_key = encrypt_with_rsa(server_public_key, self.aes_key)
         client_protocol.send_msg_plaintext(sock, encrypted_aes_key)
     
@@ -209,13 +212,14 @@ class ClientGUI:
 
     def hash_search_loop(self):
         while self.connected and self.logged_in and not self.found:
-            print(self.connected, self.logged_in, self.found)
             ans = client_protocol.get_range(self.client_socket, self.aes_key, self.username)
             while isinstance(ans, bool) and not ans:
                 ans = client_protocol.get_range(self.client_socket, self.aes_key, self.username)
             if isinstance(ans, int):
                 self.found = True
-                messagebox.showinfo("Found", f"Hash match found: {ans}")
+                messagebox.showinfo("Found", f"Hash match found: {ans}. Exiting...")
+                root.destroy()
+
                 break
             start, end, target_hash = ans
             result = find_md5_match(start, end, target_hash)
