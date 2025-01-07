@@ -48,17 +48,50 @@ class Server:
         print(f"Server is up and running on port: {self.PORT}")
     
     def handle_key_exchange(self, cl_socket):
-        client_hello = protocol.server_protocol.get_msg_plaintext(cl_socket).decode(encoding="latin-1")
-        while client_hello != "Client hello":
+        try:
+            # Attempt to decode the client hello message
             client_hello = protocol.server_protocol.get_msg_plaintext(cl_socket).decode(encoding="latin-1")
+        except UnicodeDecodeError as e:
+            print(f"Error decoding client hello message: {e}")
+            # Optionally, you can send an error response or handle the failure case
+            return None
+
+        # Ensure the loop checks for the correct "Client hello"
+        while client_hello != "Client hello":
+            try:
+                client_hello = protocol.server_protocol.get_msg_plaintext(cl_socket).decode(encoding="latin-1")
+            except UnicodeDecodeError as e:
+                print(f"Error decoding client hello message during loop: {e}")
+                return None
+
+        # Serialize server public key
+        print(self.server_public_key)
         serialized_server_public_key = self.server_public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
-        )# maybe dont use in plain text encode cause it wont work or maybe check if its in bytes
-        protocol.server_protocol.send_msg_plaintext(cl_socket, serialized_server_public_key)    
-        encrypted_aes_key = protocol.server_protocol.get_msg_plaintext(cl_socket)
-        aes_key = decrypt_with_rsa(self.server_private_key, encrypted_aes_key)
+        )
+
+        # Send the public key to the client
+        protocol.server_protocol.send_msg_plaintext(cl_socket, serialized_server_public_key)
+
+        try:
+            # Receive the encrypted AES key
+            encrypted_aes_key = protocol.server_protocol.get_msg_plaintext(cl_socket)
+        except Exception as e:
+            print(f"Error receiving encrypted AES key: {e}")
+            return None
+
+        try:
+            # Decrypt the AES key using RSA
+            aes_key = decrypt_with_rsa(self.server_private_key, encrypted_aes_key)
+        except Exception as e:
+            print(f"Error decrypting AES key: {e}")
+            return None
+
+        print("RSA-AES Handshake Successfully!")
+        print(aes_key)
         return aes_key
+
     
     def setup_database(self):
         """
@@ -167,6 +200,9 @@ class Server:
             conn = sqlite3.connect("demo.db")
             cursor = conn.cursor()
             try:
+                cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+                user = cursor.fetchone()
+                if user: return False
                 cursor.execute("INSERT INTO users (username, password, phone) VALUES (?, ?, ?)",
                                (username, hashed_pass, phone))
                 conn.commit()
