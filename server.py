@@ -2,6 +2,8 @@ import socket
 import threading
 import sqlite3
 import hashlib
+from aes_methods import decrypt_with_rsa, generate_rsa_keys
+from cryptography.hazmat.primitives import serialization
 import protocol
 import signal
 import sys
@@ -22,13 +24,14 @@ class Server:
             IP (str): IP address to bind the server.
             PORT (int): Port number to listen for client connections.
         """
+        self.server_private_key, self.server_public_key = generate_rsa_keys()
         self.IP = IP
         self.PORT = PORT
         # self.range = (3600000000, 3700000000)  # Default starting range
-        self.range = (0, 10000000)
+        self.range = (10000000000, 10100000000)
         self.queue = []  # Queue to hold unprocessed ranges
         self.client_sockets = []  # Active client sockets
-        self.TARGET = "EC9C0F7EDCC18A98B1F31853B1813301".lower()  # Target hash for validation
+        self.TARGET = "18dfb26f95f143c77d2ca5b31bc43f1c".lower()  # Target hash for validation
         self.INC = 10000000 #Increments each itertion of range
         self.found = False  # Flag to indicate if the target has been found
         self.num = None  # Store the number that matches the target hash
@@ -43,7 +46,20 @@ class Server:
         self.server_socket.bind((self.IP, self.PORT))
         self.server_socket.listen()
         print(f"Server is up and running on port: {self.PORT}")
-
+    
+    def handle_key_exchange(self, cl_socket):
+        client_hello = protocol.server_protocol.get_msg_plaintext(cl_socket).decode(encoding="latin-1")
+        while client_hello != "Client hello":
+            client_hello = protocol.server_protocol.get_msg_plaintext(cl_socket).decode(encoding="latin-1")
+        serialized_server_public_key = self.server_public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )# maybe dont use in plain text encode cause it wont work or maybe check if its in bytes
+        protocol.server_protocol.send_msg_plaintext(cl_socket, serialized_server_public_key)    
+        encrypted_aes_key = protocol.server_protocol.get_msg_plaintext(cl_socket)
+        aes_key = decrypt_with_rsa(self.server_private_key, encrypted_aes_key)
+        return aes_key
+    
     def setup_database(self):
         """
         Create and initialize the SQLite database for user and mission management.
@@ -74,11 +90,12 @@ class Server:
         Args:
             cl_socket (socket): The client socket object.
         """
+        aes_key = self.handle_key_exchange(cl_socket)
         username = None  # Store the current client's username
         try:
             while not self.stop_event.is_set():
                 try:
-                    parsed_req = protocol.server_protocol.get_request(cl_socket)
+                    parsed_req = protocol.server_protocol.get_request(cl_socket, aes_key=aes_key)
                     print(parsed_req)
                     if parsed_req[0] == '': 
                         break
@@ -89,22 +106,22 @@ class Server:
                                 ret_code = self.register_user(username=parsed_req[1], password=parsed_req[2], phone=parsed_req[3])
                                 # if ret_code:
                                 #     username = parsed_req[1]
-                                protocol.server_protocol.send_register_success(success=ret_code, cl_socket=cl_socket)
+                                protocol.server_protocol.send_register_success(success=ret_code, cl_socket=cl_socket, aes_key=aes_key)
 
                             case 'LOGIN':  # Login
                                 ret_code = self.authenticate_user(username=parsed_req[1], password=parsed_req[2])
                                 if ret_code:
                                     username = parsed_req[1]
                                     print(f"[*] {username} Logged In [*]")
-                                protocol.server_protocol.send_login_success(success=ret_code, cl_socket=cl_socket)
+                                protocol.server_protocol.send_login_success(aes_key=aes_key, success=ret_code, cl_socket=cl_socket)
 
                             case _:  # Error: Unauthenticated action
-                                protocol.server_protocol.send_error(cl_socket=cl_socket, error_msg="Error: Client is not logged in!")
+                                protocol.server_protocol.send_error(aes_key=aes_key, cl_socket=cl_socket, error_msg="Error: Client is not logged in!")
                                 continue
                     else:  # Authenticated client actions
                         match parsed_req[0]:
                             case 'GETRANGE':  # Request range
-                                handle_cal = self.handle_calc_req(username, cl_socket)
+                                handle_cal = self.handle_calc_req(aes_key, username, cl_socket)
                                 if handle_cal:
                                     break  # End session if the target was found
 
@@ -113,10 +130,10 @@ class Server:
 
                             case 'LOGOUT':  # Client logout
                                 print(f"{username} logged out.")
-                                break
-
+                                self.load_unfinished_missions(username)
+                                username = None
                             case _:  # Unknown request
-                                protocol.server_protocol.send_error(cl_socket=cl_socket, error_msg="Error: Unknown request.")
+                                protocol.server_protocol.send_error(aes_key, cl_socket=cl_socket, error_msg="Error: Unknown request.")
                                 break
                 except (ConnectionResetError, BrokenPipeError):
                     print(f"Client {username or 'unknown'} disconnected unexpectedly.")
@@ -145,12 +162,13 @@ class Server:
         Returns:
             bool: True if registration is successful, False otherwise.
         """
+        hashed_pass = hashlib.md5(password.encode()).hexdigest()
         with self.lock:
             conn = sqlite3.connect("demo.db")
             cursor = conn.cursor()
             try:
                 cursor.execute("INSERT INTO users (username, password, phone) VALUES (?, ?, ?)",
-                               (username, password, phone))
+                               (username, hashed_pass, phone))
                 conn.commit()
                 return True
             except sqlite3.IntegrityError:
@@ -169,15 +187,16 @@ class Server:
         Returns:
             bool: True if the credentials are valid, False otherwise.
         """
+        hashed_pass = hashlib.md5(password.encode()).hexdigest()
         with self.lock:
             conn = sqlite3.connect("demo.db")
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
+            cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, hashed_pass))
             user = cursor.fetchone()
             conn.close()
             return user is not None
 
-    def handle_calc_req(self, username, sock):
+    def handle_calc_req(self, aes_key, username, sock):
         """
         Handle range calculation requests from a client.
 
@@ -190,7 +209,7 @@ class Server:
         """        
         with self.lock:
             if self.found:
-                protocol.server_protocol.return_check(is_found=self.found, cl_socket=sock, num_found=self.num)
+                protocol.server_protocol.return_check(aes_key=aes_key, is_found=self.found, cl_socket=sock, num_found=self.num)
                 return True
 
             conn = sqlite3.connect("demo.db")
@@ -210,10 +229,10 @@ class Server:
                 cursor.execute("INSERT INTO missions (username, range, done) VALUES (?, ?, ?)", (username, new_range, 0))
                 conn.commit()
 
-                protocol.server_protocol.send_range(sock, new_range_start, new_range_end, self.TARGET)
+                protocol.server_protocol.send_range(sock, aes_key, new_range_start, new_range_end, self.TARGET)
             except sqlite3.Error as e:
                 print(f"Database error: {e}")
-                protocol.server_protocol.send_error(sock, "Server error while processing mission request.")
+                protocol.server_protocol.send_error(sock, aes_key, "Server error while processing mission request.")
             finally:
                 conn.close()
 

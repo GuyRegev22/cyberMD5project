@@ -1,3 +1,8 @@
+from aes_methods import aes_decrypt, aes_encrypt
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
 class Protocol:
     """
     Protocol for communication between client and server using a custom message format.
@@ -20,7 +25,7 @@ class Protocol:
     LENGTH_FIELD_SIZE = 8  # Defines the fixed size for the message length field (8 characters).
 
     @staticmethod
-    def send_msg(data, socket) -> None:
+    def send_msg(data, socket, aes_key) -> None:
         """
         Sends a message over the socket with a prefixed length field.
         
@@ -28,14 +33,14 @@ class Protocol:
         - data (str): The message to send.
         - socket: The socket through which the message will be sent.
         """
-        msg_length = str(len(data))
+        encrypted_message = aes_encrypt(aes_key, data)
+        msg_length = str(len(encrypted_message))
         zfill_length = msg_length.zfill(Protocol.LENGTH_FIELD_SIZE)
-        msg = zfill_length.encode(encoding="latin-1") + data
-        #print(msg)
+        msg = zfill_length.encode(encoding="latin-1") + encrypted_message
         socket.send(msg)
 
     @staticmethod
-    def get_msg(my_socket) -> str:
+    def get_msg(my_socket, aes_key):
         """
         Receives a message from the socket, extracting and verifying its length.
         
@@ -56,11 +61,41 @@ class Protocol:
         except ValueError as e:            
             return f"Error {e}"
 
-        msg = my_socket.recv(msg_length)
-        while len(msg) < msg_length:
-            msg += my_socket.recv(msg_length - len(msg))
-        return msg.decode(encoding="latin-1")
+        encrypted_message = my_socket.recv(msg_length) #should it use decode()?
+        while len(encrypted_message) < msg_length:
+            encrypted_message += my_socket.recv(msg_length - len(encrypted_message))
+        decrypted_message = aes_decrypt(aes_key, encrypted_message)
+        return decrypted_message.decode(encoding="latin-1")
 
+    def send_msg_plaintext(socket, plaintext):
+        # Ensure plaintext is in bytes
+        if isinstance(plaintext, str):
+            plaintext = plaintext.encode()  # Encode string to bytes
+        elif not isinstance(plaintext, bytes):
+            raise TypeError("plaintext must be a string or bytes")
+        
+        # Calculate length and prepare message
+        msg_length = str(len(plaintext))
+        zfill_length = msg_length.zfill(Protocol.LENGTH_FIELD_SIZE)
+        msg = zfill_length.encode(encoding="latin-1") + plaintext
+        socket.send(msg)
+
+
+    def get_msg_plaintext (socket):
+        msg_length = socket.recv(Protocol.LENGTH_FIELD_SIZE).decode(encoding="latin-1")
+        if msg_length == "":
+            return ""
+        while len(msg_length) < Protocol.LENGTH_FIELD_SIZE:
+            msg_length += socket.recv(Protocol.LENGTH_FIELD_SIZE - len(msg_length)).decode(encoding="latin-1")
+        try:
+            msg_length = int(msg_length)
+        except ValueError as e:            
+            return f"Error {e}"
+
+        plaintext = socket.recv(msg_length)
+        while len(plaintext) < msg_length:
+            plaintext += socket.recv(msg_length - len(plaintext))
+        return plaintext#.decode(encoding="latin-1")
 
 class client_protocol(Protocol):
     """
@@ -68,7 +103,7 @@ class client_protocol(Protocol):
     """
 
     @staticmethod
-    def register(cl_socket, username, password, phone_number) -> str:
+    def register(cl_socket, aes_key, username, password, phone_number) -> str:
         """
         Sends a registration request to the server.
         
@@ -79,18 +114,18 @@ class client_protocol(Protocol):
         Returns:
         - str: The server's response.
         """
-        client_protocol.send_msg(f"REG|{username}|{password}|{phone_number}".encode(encoding="latin-1"), cl_socket)
-        return Protocol.get_msg(cl_socket)
+        client_protocol.send_msg(f"REG|{username}|{password}|{phone_number}".encode(encoding="latin-1"), cl_socket, aes_key)
+        return Protocol.get_msg(cl_socket, aes_key)
 
     @staticmethod
-    def logout(cl_socket) -> None:
+    def logout(cl_socket, aes_key) -> None:
         """
         Sends a logout request to the server.
         """
-        client_protocol.send_msg("LOGOUT".encode(encoding="latin-1"), cl_socket)
+        client_protocol.send_msg("LOGOUT".encode(encoding="latin-1"), cl_socket, aes_key)
 
     @staticmethod
-    def login(cl_socket, username, password) -> bool:
+    def login(cl_socket, aes_key, username, password) -> bool:
         """
         Sends a login request to the server.
         
@@ -101,14 +136,14 @@ class client_protocol(Protocol):
         Returns:
         - bool: True if login is successful, False otherwise.
         """
-        client_protocol.send_msg(f"LOGIN|{username}|{password}".encode(encoding="latin-1"), cl_socket)
-        msg = client_protocol.get_msg(cl_socket)
+        client_protocol.send_msg(f"LOGIN|{username}|{password}".encode(encoding="latin-1"), cl_socket, aes_key)
+        msg = client_protocol.get_msg(cl_socket, aes_key)
         if msg.startswith("Error"):
             return False
         return msg == "Logged in successfully"
 
     @staticmethod
-    def get_range(cl_socket, username) -> tuple[int, int, str] | bool | int:
+    def get_range(cl_socket, aes_key, username) -> tuple[int, int, str] | bool | int:
         """
         Requests a range of numbers to check from the server.
         
@@ -116,8 +151,8 @@ class client_protocol(Protocol):
         - tuple[int, int]: The start and end of the range if successful.
         - False if there is an error.
         """
-        client_protocol.send_msg(f"GETRANGE|{username}".encode(encoding="latin-1"), cl_socket)
-        msg = client_protocol.get_msg(cl_socket)
+        client_protocol.send_msg(f"GETRANGE|{username}".encode(encoding="latin-1"), cl_socket, aes_key)
+        msg = client_protocol.get_msg(cl_socket, aes_key)
         if msg.startswith("FOUND"):
             return int(msg.split("|")[1])
         if msg.startswith("Error"):
@@ -125,14 +160,14 @@ class client_protocol(Protocol):
         return (int(msg.split("|")[1]), int(msg.split("|")[2]), msg.split("|")[3])
 
     @staticmethod
-    def send_found(cl_socket, number: int) -> None:
+    def send_found(cl_socket, aes_key, number: int) -> None:
         """
         Notifies the server that the client has found a valid number.
         
         Args:
         - number (int): The found number.
         """
-        client_protocol.send_msg(f"FOUND|{number}".encode(encoding="latin-1"), cl_socket)
+        client_protocol.send_msg(f"FOUND|{number}".encode(encoding="latin-1"), cl_socket, aes_key)
 
 
 
@@ -170,31 +205,31 @@ class server_protocol(Protocol):
         return True
 
     @staticmethod
-    def get_request(cl_socket) -> list[str]:
+    def get_request(cl_socket, aes_key) -> list[str]:
         """
         Receives and validates a client request.
         
         Returns:
         - list[str]: The parsed request as a list of strings.
         """
-        msg = server_protocol.get_msg(cl_socket)
-        while not server_protocol.is_valid(msg):
+        decrypted_message = server_protocol.get_msg(cl_socket, aes_key)
+        while not server_protocol.is_valid(decrypted_message):
             server_protocol.send_error(cl_socket=cl_socket)
-            msg = server_protocol.get_msg(cl_socket)
-        return msg.split("|")
+            decrypted_message = server_protocol.get_msg(cl_socket, aes_key)
+        return decrypted_message.split("|")
 
     @staticmethod
-    def send_error(cl_socket, error_msg: str=None) -> None:
+    def send_error(cl_socket, aes_key, error_msg: str=None) -> None:
         """
         Sends an error message to the client.
         """
         if error_msg is None:
-            server_protocol.send_msg("Server Error".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg("Server Error".encode(encoding="latin-1"), cl_socket, aes_key)
         else:
-            server_protocol.send_msg(f"Server Error|{error_msg}".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg(f"Server Error|{error_msg}".encode(encoding="latin-1"), cl_socket, aes_key)
 
     @staticmethod
-    def send_range(cl_socket, start: int, end: int, target: str) -> None:
+    def send_range(cl_socket, aes_key, start: int, end: int, target: str) -> None:
         """
         Sends a range of numbers to the client.
         
@@ -203,10 +238,10 @@ class server_protocol(Protocol):
         - end (int): The end of the range.
         - target (str): The hash of the target number.
         """
-        server_protocol.send_msg(f"RANGE|{start}|{end}|{target}".encode(encoding="latin-1"), cl_socket)
+        server_protocol.send_msg(f"RANGE|{start}|{end}|{target}".encode(encoding="latin-1"), cl_socket, aes_key)
 
     @staticmethod
-    def send_login_success(cl_socket, success: bool) -> None:
+    def send_login_success(cl_socket, aes_key, success: bool) -> None:
         """
         Sends a login success or failure message to the client.
         
@@ -214,12 +249,12 @@ class server_protocol(Protocol):
         - success (bool): True if login is successful, False otherwise.
         """
         if success:
-            server_protocol.send_msg("Logged in successfully".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg("Logged in successfully".encode(encoding="latin-1"), cl_socket, aes_key)
         else:
-            server_protocol.send_error(cl_socket=cl_socket)
+            server_protocol.send_error(cl_socket=cl_socket, aes_key=aes_key)
 
     @staticmethod
-    def send_register_success(cl_socket, success: bool) -> None:
+    def send_register_success(cl_socket, aes_key, success: bool) -> None:
         """
         Sends a registration success or failure message to the client.
         
@@ -227,12 +262,12 @@ class server_protocol(Protocol):
         - success (bool): True if registration is successful, False otherwise.
         """
         if success:
-            server_protocol.send_msg("Registered successfully".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg("Registered successfully".encode(encoding="latin-1"), cl_socket, aes_key)
         else:
-            server_protocol.send_error(cl_socket=cl_socket)
+            server_protocol.send_error(cl_socket=cl_socket, aes_key=aes_key)
 
     @staticmethod
-    def return_check(cl_socket, is_found: bool, num_found: int) -> None:
+    def return_check(cl_socket, aes_key, is_found: bool, num_found: int) -> None:
         """
         Sends the result of a "check if found" operation to the client.
         
@@ -240,6 +275,6 @@ class server_protocol(Protocol):
         - is_found (bool): True if a number was found, False otherwise.
         """
         if is_found:
-            server_protocol.send_msg(f"FOUND|{num_found}".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg(f"FOUND|{num_found}".encode(encoding="latin-1"), cl_socket, aes_key)
         else:
-            server_protocol.send_msg("NOT FOUND".encode(encoding="latin-1"), cl_socket)
+            server_protocol.send_msg("NOT FOUND".encode(encoding="latin-1"), cl_socket, aes_key)
