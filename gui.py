@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 from tkinter import messagebox
 import socket
@@ -6,11 +7,15 @@ import hashlib
 import multiprocessing
 import threading
 import time
+from aes_methods import decrypt_with_rsa, encrypt_with_rsa, generate_rsa_keys
 from protocol import client_protocol
+from cryptography.hazmat.primitives import serialization
 import sys
 
 class ClientGUI:
     def __init__(self, root):
+        self.client_private_key, self.client_public_key = generate_rsa_keys()
+        self.aes_key = None
         self.root = root
         self.root.title("Client GUI")
         self.server_ip = "192.168.0.238"
@@ -31,6 +36,15 @@ class ClientGUI:
         self.setup_gui()
         self.label.config(text="Please register or login.")
 
+    def handle_key_exchange(self):
+        sock = self.client_socket
+        client_protocol.send_msg_plaintext(sock, "Client hello")
+        serialized_server_public_key = client_protocol.get_msg_plaintext(sock)
+        server_public_key = serialization.load_pem_public_key(serialized_server_public_key)
+        self.aes_key = os.urandom(32)  # AES-256
+        encrypted_aes_key = encrypt_with_rsa(server_public_key, self.aes_key)
+        client_protocol.send_msg_plaintext(sock, encrypted_aes_key)
+    
     def setup_gui(self):
         self.frame = tk.Frame(self.root)
         self.frame.pack(padx=20, pady=20)
@@ -75,6 +89,7 @@ class ClientGUI:
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
             self.connected = True
+            self.handle_key_exchange()
             messagebox.showinfo("Connection", "Connected to server successfully.")
         except socket.error as e:
             messagebox.showerror("Connection Error", f"Failed to connect: {e}")
@@ -110,7 +125,7 @@ class ClientGUI:
             return
 
         try:
-            response = client_protocol.register(self.client_socket, username, password, phone_number)
+            response = client_protocol.register(self.client_socket, self.aes_key, username, password, phone_number)
             if response:
                 messagebox.showinfo("Success", "Registration Successful")
                 self.label.config(text="You have registered, Please click login.")
@@ -133,7 +148,7 @@ class ClientGUI:
             return
 
         try:
-            response = client_protocol.login(self.client_socket, username, password)
+            response = client_protocol.login(self.client_socket, self.aes_key, username, password)
             if response:
                 messagebox.showinfo("Success", "Login Successful")
                 self.connected = True
@@ -171,7 +186,7 @@ class ClientGUI:
             return
 
         try:
-            client_protocol.logout(self.client_socket)
+            client_protocol.logout(self.client_socket, self.aes_key)
             self.logged_in = False
             messagebox.showinfo("Success", "Logout Successful")
 
@@ -195,9 +210,9 @@ class ClientGUI:
     def hash_search_loop(self):
         while self.connected and self.logged_in and not self.found:
             print(self.connected, self.logged_in, self.found)
-            ans = client_protocol.get_range(self.client_socket, self.username)
+            ans = client_protocol.get_range(self.client_socket, self.aes_key, self.username)
             while isinstance(ans, bool) and not ans:
-                ans = client_protocol.get_range(self.client_socket, self.username)
+                ans = client_protocol.get_range(self.client_socket, self.aes_key, self.username)
             if isinstance(ans, int):
                 self.found = True
                 messagebox.showinfo("Found", f"Hash match found: {ans}")
@@ -205,7 +220,7 @@ class ClientGUI:
             start, end, target_hash = ans
             result = find_md5_match(start, end, target_hash)
             if result is not None:
-                client_protocol.send_found(self.client_socket, result)
+                client_protocol.send_found(self.client_socket, self.aes_key, result)
 
 
 def calc_hash(args):
